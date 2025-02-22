@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能点餐系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box }
+
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            width: 250px;
+            background-color: white;
+            border-right: 1px solid #ddd;
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 15px;
+        }
+
+        .category-list {
+            margin-bottom: 20px;
+        }
+
+        .category-item {
+            padding: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .category-item.active {
+            background-color: #f0f3ff;
+        }
+
+        .dish-card {
+            background-color: white;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .dish-image {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+
+        .order-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 1000;
+            display: none;
+        }
+
+        .order-form {
+            background-color: white;
+            max-width: 400px;
+            margin: 20% auto;
+            padding: 20px;
+            border-radius: 5px;
+        }
+
+        @media (max-width: 768px) {
+            .container { flex-direction: column; }
+            .sidebar { width: 100%; border-right: none; }
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            font-size: 18px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="sidebar">
+        <h3>分类导航</h3>
+        <div id="categories" class="category-list"></div>
+    </div>
+
+    <div class="main-content">
+        <div id="dish-list" class="loading">加载中...</div>
+    </div>
+
+    <!-- 订单模态框 -->
+    <div class="order-modal">
+        <div class="order-form">
+            <span class="close-modal">&times;</span>
+            <h2>订单确认</h2>
+            <ul id="cart-items"></ul>
+            <div class="total">
+                <p>总计：¥<span id="total-price">0.00</span></p>
+                <button id="submit-order">立即支付</button>
+                <button id="clear-cart">清空购物车</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 配置API信息
+    const API_BASE = 'https://www.themealdb.com/api/json/v1/1/';
+
+    // 初始化数据
+    let currentCategory = '牛肉';
+    let cart = [];
+
+    // 中文分类映射
+    const categories = [
+        { name: '牛肉', apiName: 'Beef' },
+        { name: '鸡肉', apiName: 'Chicken' },
+        { name: '羊肉', apiName: 'Lamb' },
+        { name: '猪肉', apiName: 'Pork' },
+        { name: '海鲜', apiName: 'Seafood' },
+        { name: '素食', apiName: 'Vegetarian' },
+        { name: '甜品', apiName: 'Dessert' },
+        { name: '面食', apiName: 'Pasta' },
+        { name: '汤类', apiName: 'Soup' },
+    ];
+
+    // 获取分类数据
+    function fetchCategories() {
+        displayCategories(categories);
+    }
+
+    // 显示分类列表
+    function displayCategories(categories) {
+        const categoryList = document.getElementById('categories');
+        categories.forEach(cat => {
+            const item = document.createElement('div');
+            item.className = 'category-item';
+            item.textContent = cat.name;
+            item.dataset.category = cat.apiName;
+            item.addEventListener('click', () => loadDishesByCategory(item.dataset.category));
+            categoryList.appendChild(item);
+        });
+        // 默认选中第一个分类
+        if (categories.length > 0) {
+            categoryList.children[0].classList.add('active');
+            loadDishesByCategory(categories[0].apiName);
+        }
+    }
+
+    // 加载指定分类的菜品
+    function loadDishesByCategory(category) {
+        currentCategory = category || 'Beef';
+        document.getElementById('dish-list').innerHTML = '<div class="loading">加载中...</div>';
+        fetch(`${API_BASE}filter.php?c=${currentCategory}`)
+            .then(response => response.json())
+            .then(data => {
+                displayDishes(data.meals);
+            });
+    }
+
+    // 显示菜品列表
+    function displayDishes(dishes) {
+        const dishList = document.getElementById('dish-list');
+        dishList.innerHTML = '';
+        dishes.forEach(dish => {
+            const card = document.createElement('div');
+            card.className = 'dish-card';
+            card.dataset.dishid = dish.idMeal;
+            card.innerHTML = `
+                <img src="${dish.strMealThumb}" alt="${dish.strMeal}" class="dish-image">
+                <h3>${dish.strMeal}</h3>
+                <p class="price">¥${Math.floor(Math.random() * 100) + 20}.00</p>
+                <button class="add-to-cart">加入购物车</button>
+            `;
+            card.querySelector('.add-to-cart').addEventListener('click', () => addToCart(dish));
+            dishList.appendChild(card);
+        });
+    }
+
+    // 购物车功能
+    function addToCart(dish) {
+        const existingItem = cart.find(item => item.idMeal === dish.idMeal);
+        if (existingItem) {
+            existingItem.quantity += 1;
+        } else {
+            cart.push({ ...dish, quantity: 1, price: Math.floor(Math.random() * 100) + 20 });
+        }
+        updateCartUI();
+    }
+
+    function updateCartUI() {
+        const cartItems = document.getElementById('cart-items');
+        cartItems.innerHTML = '';
+        cart.forEach(item => {
+            const li = document.createElement('li');
+            li.textContent = `${item.strMeal} x${item.quantity} - ¥${item.price * item.quantity}`;
+            li.dataset.dishid = item.idMeal;
+            li.addEventListener('click', () => removeFromCart(li));
+            cartItems.appendChild(li);
+        });
+        document.getElementById('total-price').textContent = calculateTotal();
+    }
+
+    function removeFromCart(li) {
+        const index = cart.findIndex(item => item.idMeal === li.dataset.dishid);
+        cart.splice(index, 1);
+        updateCartUI();
+    }
+
+    function calculateTotal() {
+        return cart.reduce((total, item) => total + item.price * item.quantity, 0).toFixed(2);
+    }
+
+    // 订单提交
+    function submitOrder() {
+        // 这里可以集成支付API
+        alert(`订单已提交！总价：¥${calculateTotal()}`);
+        cart = [];
+        updateCartUI();
+        closeModal();
+    }
+
+    // 清空购物车
+    function clearCart() {
+        cart = [];
+        updateCartUI();
+    }
+
+    // 模态框控制
+    function showModal() {
+        document.querySelector('.order-modal').style.display = 'block';
+    }
+
+    function closeModal() {
+        document.querySelector('.order-modal').style.display = 'none';
+    }
+
+    // 初始化应用
+    function initApp() {
+        fetchCategories();
+        
+        // 添加事件监听
+        document.querySelector('.close-modal').addEventListener('click', closeModal);
+        window.addEventListener('click', (e) => e.target === document.querySelector('.order-modal') && closeModal());
+        document.getElementById('submit-order').addEventListener('click', submitOrder);
+        document.getElementById('clear-cart').addEventListener('click', clearCart);
+    }
+
+    initApp();
+</script>
+
+</body>
+</html>
